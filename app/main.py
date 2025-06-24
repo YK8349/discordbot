@@ -12,7 +12,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 # ✅ Botクラスを使うことでtree（スラッシュコマンド）に対応
-client = discord.Bot(intents=intents)
+client = commands.Bot(intents=intents)
 
 # bot起動時
 @client.event
