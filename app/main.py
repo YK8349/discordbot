@@ -8,7 +8,7 @@ load_dotenv(verbose=True)
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-intents = discord.Intents.default()
+intents = commands.Intents.default()
 intents.message_content = True
 
 # ✅ Botクラスを使うことでtree（スラッシュコマンド）に対応
