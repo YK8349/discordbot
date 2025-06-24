@@ -3,8 +3,6 @@ import os
 from os.path import join, dirname
 from dotenv import load_dotenv
 
-from keep_alive import keep_alive
-
 client = discord.Client(intents=discord.Intents.default())
 
 load_dotenv(verbose=True)
