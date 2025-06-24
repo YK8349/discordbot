@@ -1,3 +1,4 @@
+import discord
 from discord.ext import commands
 import os
 import random
@@ -8,7 +9,7 @@ load_dotenv(verbose=True)
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-intents = commands.Intents.default()
+intents = discord.Intents.default()
 intents.message_content = True
 
 # ✅ Botクラスを使うことでtree（スラッシュコマンド）に対応
