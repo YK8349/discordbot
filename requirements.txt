@@ -5,7 +5,8 @@ attrs==24.2.0
 cffi==1.17.1
 croniter==5.0.1
 discord-typings==0.9.0
-discord.py==2.4.0
+py-cord==2.4.1
+python-dotenv==1.0.1
 emoji==2.14.0
 frozenlist==1.5.0
 idna==3.10
@@ -19,4 +20,3 @@ six==1.16.0
 tomli==2.0.2
 typing_extensions==4.12.2
 yarl==1.17.1
-python-dotenv
