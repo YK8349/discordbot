@@ -63,7 +63,6 @@ async def ping(interaction: discord.Interaction):
         await interaction.response.send_message(" <:usami_using_pc:1174190208808390758>")
     
 
-keep_alive()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
