@@ -11,7 +11,7 @@ ENV TERM xterm
 
 # pip install
 COPY requirements.txt /bot/
-RUN pip install -r requirements.txt
+RUN pip install -r /bot/requirements.txt
 COPY . /bot
 
 # ポート開放 (uvicornで指定したポート)
