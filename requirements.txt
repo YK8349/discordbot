@@ -20,4 +20,3 @@ tomli==2.0.2
 typing_extensions==4.12.2
 yarl==1.17.1
 python-dotenv
-py-cord==2.0.0rc1
