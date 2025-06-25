@@ -14,7 +14,7 @@ intents.message_content = True
 intents.voice_states = True
 client = discord.Client(intents=intents)
 
-GUILD_ID = 123456789012345678  # テスト用サーバーIDに置き換えてください（任意）
+GUILD_ID = 1127013631763169301  # テスト用サーバーIDに置き換えてください（任意）
 
 class MyClient(discord.Client):
     def __init__(self):
