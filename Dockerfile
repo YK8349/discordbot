@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM python:3.11-slim
 
 # 更新・日本語化
 RUN apt-get update && apt-get -y install locales && apt-get -y upgrade && \
