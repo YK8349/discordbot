@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.12
 
 # 更新・日本語化
 RUN apt-get update && apt-get -y install locales && apt-get -y upgrade && \
