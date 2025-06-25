@@ -45,10 +45,6 @@ async def on_ready():
     await client.tree.sync()
     print("スラッシュコマンドを同期しました")
 
-# スラッシュコマンドの登録
-@client.tree.command(name="ping", description="pingpong")
-async def ping(ctx):
-    await ctx.send(content="pong!")
 
 @client.event
 async def on_message(message):
@@ -69,7 +65,7 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("pong")
 
 @client.tree.command(name='progress', description='進捗を返します')
-async def ping(interaction: discord.Interaction):
+async def progress(interaction: discord.Interaction):
     random_number = random.randint(0, 100)
     if(random_number==0):
         await interaction.response.send_message("完成しませんでした...")
@@ -79,7 +75,7 @@ async def ping(interaction: discord.Interaction):
         await interaction.response.send_message("{}%完成しました!".format(random_number))
 
 @client.tree.command(name='usami', description='宇佐美を返します')
-async def ping(interaction: discord.Interaction):
+async def usami(interaction: discord.Interaction):
     random_number = random.randint(0, 2)
     if(random_number==0):
         await interaction.response.send_message("<:usami:1159384863309316146>")
