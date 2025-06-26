@@ -50,11 +50,11 @@ async def on_ready():
 async def on_message(message):
     # if message.author.bot:
     #     return
-    if "宇佐美" in message.content():
+    if "宇佐美" in message.content:
         await message.add_reaction("<:usami:1159384863309316146>")
-    if "レポート" in message.content():
+    if "レポート" in message.content:
         await message.add_reaction("<:report:1140109232738414692>")
-    if "よぴぴ丸" in message.content():
+    if "よぴぴ丸" in message.content:
         await message.add_reaction("<:ero:1192928073495105636>")
     if "あります" in message.content:
         await message.channel.send("ねぇよ")
