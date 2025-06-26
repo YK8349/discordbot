@@ -86,7 +86,7 @@ async def usami(interaction: discord.Interaction):
 
 @client.tree.command(name='meigen', description='waon鯖名言集')
 async def meigen(interaction: discord.Interaction):
-    random_number = random.randint(0, 2)
+    random_number = random.randint(0, 9)
     if(random_number==0):
         await interaction.response.send_message("yomo「エロいショタの方が1000倍見たい」- 2025/02/03 1:21")
     if(random_number==1):
