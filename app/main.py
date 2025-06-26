@@ -50,13 +50,13 @@ async def on_ready():
 async def on_message(message):
     # if message.author.bot:
     #     return
-    if "宇佐美" in message.content.lower():
+    if "宇佐美" in message.content():
         await message.add_reaction("<:usami:1159384863309316146>")
-    if "レポート" in message.content.lower():
+    if "レポート" in message.content():
         await message.add_reaction("<:report:1140109232738414692>")
-    if "よぴぴ丸" in message.content.lower():
+    if "よぴぴ丸" in message.content():
         await message.add_reaction("<:ero:1192928073495105636>")
-    if message.content == "あります" :
+    if "あります" in message.content:
         await message.channel.send("ねぇよ")
 
 # スラッシュコマンドの定義
@@ -84,6 +84,29 @@ async def usami(interaction: discord.Interaction):
     if(random_number==2):
         await interaction.response.send_message(" <:usami_using_pc:1174190208808390758>")
 
+@client.tree.command(name='meigen', description='waon鯖名言集')
+async def meigen(interaction: discord.Interaction):
+    random_number = random.randint(0, 2)
+    if(random_number==0):
+        await interaction.response.send_message("yomo「エロいショタの方が1000倍見たい」- 2025/02/03 1:21")
+    if(random_number==1):
+        await interaction.response.send_message("あいかぎ「いじめはみじめ、いじめだけに（笑）<:aoki_thinking:1309010344382955560>」- 2025/01/27 18:06")
+    if(random_number==2):
+        await interaction.response.send_message("なりょ「わたしはオタクではありませんし、高専なんて知りませんでした」- 2023/09/09 14:49")
+    if(random_number==3):
+        await interaction.response.send_message("なりょ「レッツ強盗」- 2023/09/07 9:28")
+    if(random_number==4):
+        await interaction.response.send_message("なりょ「物理的に、ね？」- 2025/02/17 13:26")
+    if(random_number==5):
+        await interaction.response.send_message("澤「北陸信用ちんこ」- 2025/06/11 20:46")
+    if(random_number==6):
+        await interaction.response.send_message("澤「有線のイヤホンとかオタク以外持ってないだろ殺すぞ」- 2025/06/07 23:15")
+    if(random_number==7):
+        await interaction.response.send_message("あいかぎ「omeja」- 2025/01/08 14:56")
+    if(random_number==8):
+        await interaction.response.send_message("yomoがトピックを オナ二一 に設定")
+    if(random_number==9):
+        await interaction.response.send_message("澤「と言うかモラ」- 2024/09/24 15:07")
 
 # Botの起動
 # Koyeb用 サーバー立ち上げ
