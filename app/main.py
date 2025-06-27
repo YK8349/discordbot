@@ -108,7 +108,13 @@ async def meigen(interaction: discord.Interaction):
     if(random_number==9):
         await interaction.response.send_message("澤「と言うかモラ」- 2024/09/24 15:07")
     if(random_number==10):
-        await interaction.response.send_message("澤「と言うかモラ」- 2024/09/24 15:07")
+        await interaction.response.send_message("松木「まーんwwwwまーんwww！（マン語でしか話せなくなり嘆いている）」- 2025/06/19 18:35")
+    if(random_number==11):
+        await interaction.response.send_message("松木「あいか氣゛」- 2025/06/18 12:12")
+    if(random_number==12):
+        await interaction.response.send_message("山口「あいかぎってゲイなの?」- 2025/06/02 9:33")
+    if(random_number==13):
+        await interaction.response.send_message("松木「よものちんちん「ﾌﾞﾛﾛﾛﾛﾛﾛﾛﾛﾛwwwwwwwwww！！！！！」」- 2025/05/25 0:40")
 
 # Botの起動
 # Koyeb用 サーバー立ち上げ
