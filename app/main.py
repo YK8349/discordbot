@@ -86,7 +86,7 @@ async def usami(interaction: discord.Interaction):
 
 @client.tree.command(name='meigen', description='waon鯖名言集')
 async def meigen(interaction: discord.Interaction):
-    random_number = random.randint(0, 10)
+    random_number = random.randint(0, 18)
     if(random_number==0):
         await interaction.response.send_message("yomo「エロいショタの方が1000倍見たい」- 2025/02/03 1:21")
     if(random_number==1):
@@ -115,6 +115,17 @@ async def meigen(interaction: discord.Interaction):
         await interaction.response.send_message("山口「あいかぎってゲイなの?」- 2025/06/02 9:33")
     if(random_number==13):
         await interaction.response.send_message("松木「よものちんちん「ﾌﾞﾛﾛﾛﾛﾛﾛﾛﾛﾛwwwwwwwwww！！！！！」」- 2025/05/25 0:40")
+    if(random_number==14):
+        await interaction.response.send_message("吉岡「プロ棋士に俺はなる」- 2025/05/21 17:54")
+    if(random_number==15):
+        await interaction.response.send_message("山口伝説tier　～～殿堂入り～～　教室を下着姿で徘徊")
+    if(random_number==16):
+        await interaction.response.send_message("山口伝説tier　tier1：面接途中にペンを置かれる，「この能無し野郎」，「転学科しないでください」")
+    if(random_number==17):
+        await interaction.response.send_message("山口伝説tier　tier2：鼻血")
+    if(random_number==18):
+        await interaction.response.send_message("山口「電情落として、成績落として、バイト落としてあと落とすの命だけでガチ鬱」- 2025/04/17 16:22")
+    
 
 # Botの起動
 # Koyeb用 サーバー立ち上げ
