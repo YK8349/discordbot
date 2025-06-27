@@ -86,7 +86,7 @@ async def usami(interaction: discord.Interaction):
 
 @client.tree.command(name='meigen', description='waon鯖名言集')
 async def meigen(interaction: discord.Interaction):
-    random_number = random.randint(0, 9)
+    random_number = random.randint(0, 10)
     if(random_number==0):
         await interaction.response.send_message("yomo「エロいショタの方が1000倍見たい」- 2025/02/03 1:21")
     if(random_number==1):
@@ -106,6 +106,8 @@ async def meigen(interaction: discord.Interaction):
     if(random_number==8):
         await interaction.response.send_message("yomoがトピックを オナ二一 に設定")
     if(random_number==9):
+        await interaction.response.send_message("澤「と言うかモラ」- 2024/09/24 15:07")
+    if(random_number==10):
         await interaction.response.send_message("澤「と言うかモラ」- 2024/09/24 15:07")
 
 # Botの起動
