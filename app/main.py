@@ -3,6 +3,7 @@ from discord import app_commands
 import os
 import dotenv
 import random
+import google.generativeai as genai
 
 from server import server_thread
 
@@ -13,6 +14,12 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 client = discord.Client(intents=intents)
+
+# 環境変数からAPIキーを取得
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
+
+model = genai.GenerativeModel('gemini-Flash') # 使用するモデルを指定
 
 GUILD_ID = 1127013631763169301  # テスト用サーバーIDに置き換えてください（任意）
 
@@ -126,6 +133,16 @@ async def meigen(interaction: discord.Interaction):
     if(random_number==18):
         await interaction.response.send_message("山口「電情落として、成績落として、バイト落としてあと落とすの命だけでガチ鬱」- 2025/04/17 16:22")
     
+@client.tree.command(name='gemini', description='API使いすぎたら殺す(無料枠分使い果たすなカスども)')
+@app_commands.describe(message="プロンプト")
+async def gemini(interaction: discord.Interaction,message: str):
+    prompt = message
+    try:
+            response = model.generate_content(prompt)
+            await interaction.response.send_message(response.text)
+    except Exception as e:
+            await interaction.response.send_message(f"エラーが発生しました: {e}")
+
 
 # Botの起動
 # Koyeb用 サーバー立ち上げ
