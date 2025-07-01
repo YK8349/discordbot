@@ -141,8 +141,11 @@ async def gemini(interaction: discord.Interaction, message: str):
 
     prompt = message
     try:
-        response = model.generate_content(prompt)
-        await interaction.followup.send(response.text)
+        response = model.generate_content(message)
+        if not response.candidates or not response.candidates[0].content.parts:
+            await interaction.followup.send("内容が生成されませんでした。もう少し詳しく聞いてください。")
+        else:
+            await interaction.followup.send(response.text[:2000])
     except Exception as e:
         await interaction.followup.send(f"エラーが発生しました: {e}")
 
