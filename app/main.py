@@ -19,7 +19,13 @@ client = discord.Client(intents=intents)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
-model = genai.GenerativeModel('gemini-2.5-flash') # 使用するモデルを指定
+# 使用するモデルを指定
+model = genai.GenerativeModel(
+        'gemini-2.5-flash-lite',
+        generation_config=genai.types.GenerationConfig(
+            max_output_tokens=500  # 500トークン ≒ 日本語で300〜400文字程度
+        )
+    ) 
 
 GUILD_ID = 1127013631763169301  # テスト用サーバーIDに置き換えてください（任意）
 
@@ -135,15 +141,13 @@ async def meigen(interaction: discord.Interaction):
     
 @client.tree.command(name='gemini', description='API使いすぎたら殺す(無料枠分使い果たすなカスども)')
 @app_commands.describe(message="プロンプト")
-async def gemini(interaction: discord.Interaction, message: str):
-    await interaction.response.defer()  # 最初に一旦応答を保留
-
+async def gemini(interaction: discord.Interaction,message: str):
     prompt = message
     try:
-        response = model.generate_content(prompt)
-        await interaction.followup.send(response.text)
+            response = model.generate_content(prompt)
+            await interaction.response.send_message(response.text)
     except Exception as e:
-        await interaction.followup.send(f"エラーが発生しました: {e}")
+            await interaction.response.send_message(f"エラーが発生しました: {e}")
 
 
 # Botの起動
