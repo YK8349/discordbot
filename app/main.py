@@ -23,7 +23,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel(
         'gemini-2.5-flash',
         generation_config=genai.types.GenerationConfig(
-            max_output_tokens=500  # 500トークン ≒ 日本語で300〜400文字程度
+            max_output_tokens=1000  # 500トークン ≒ 日本語で300〜400文字程度
         )
     ) 
 
