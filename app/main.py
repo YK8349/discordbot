@@ -141,13 +141,15 @@ async def meigen(interaction: discord.Interaction):
     
 @client.tree.command(name='gemini', description='API使いすぎたら殺す(無料枠分使い果たすなカスども)')
 @app_commands.describe(message="プロンプト")
-async def gemini(interaction: discord.Interaction,message: str):
+async def gemini(interaction: discord.Interaction, message: str):
+    await interaction.response.defer()  # 最初に一旦応答を保留
+
     prompt = message
     try:
-            response = model.generate_content(prompt)
-            await interaction.response.send_message(response.text)
+        response = model.generate_content(prompt)
+        await interaction.followup.send(response.text)
     except Exception as e:
-            await interaction.response.send_message(f"エラーが発生しました: {e}")
+        await interaction.followup.send(f"エラーが発生しました: {e}")
 
 
 # Botの起動
