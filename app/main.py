@@ -616,7 +616,8 @@ class PokerSetupView(View):
         if game and not game.game_in_progress:
             if game.add_player(interaction.user):
                 await interaction.response.send_message(f"{interaction.user.display_name} がゲームに参加しました。", ephemeral=True)
-                await game.update_game_state_message()
+                embed = game.create_embed("ポーカーの参加者を募集中！参加ボタンで参加できます。")
+                await game.game_message.edit(embed=embed, view=self)
             else:
                 await interaction.response.send_message("すでに参加しています。", ephemeral=True)
         else:
