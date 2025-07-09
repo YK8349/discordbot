@@ -1,12 +1,13 @@
 import discord
 from discord import app_commands
-from discord.ui import View, Button
+from discord.ui import View, Button, Modal, TextInput
 import os
 import dotenv
 import random
 import google.generativeai as genai
 import itertools
 import asyncio
+import math
 
 from server import server_thread
 
@@ -29,36 +30,28 @@ GUILD_ID = 1127013631763169301  # テスト用サーバーIDに置き換えて�
 
 # --- Poker Game Implementation ---
 
-# Dictionary to store poker games per channel
 poker_games = {}
 
-# Card definitions
 SUITS = ['♠', '♥', '♦', '♣']
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
 
 def get_poker_hand_rank(hand):
-    # hand is a list of 5 cards, where each card is a tuple (rank, suit)
     ranks = sorted([card[0] for card in hand], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
     suits = [card[1] for card in hand]
     rank_counts = {r: ranks.count(r) for r in ranks}
     is_flush = len(set(suits)) == 1
     
-    # Check for straight
     unique_ranks = sorted(list(set(ranks)), key=lambda r: '23456789TJQKA'.index(r))
     is_straight = False
     if len(unique_ranks) == 5:
-        # Ace-high straight
         if '23456789TJQKA'.find(''.join(unique_ranks)) != -1:
             is_straight = True
-        # Ace-low straight (A, 2, 3, 4, 5)
         elif set(unique_ranks) == {'A', '2', '3', '4', '5'}:
             is_straight = True
-            ranks = ['5', '4', '3', '2', 'A'] # Reorder for correct display
+            ranks = ['5', '4', '3', '2', 'A']
 
-    # Hand ranking logic
     if is_straight and is_flush:
-        if set(ranks) == {'A', 'K', 'Q', 'J', 'T'}:
-            return "ロイヤルフラッシュ", ranks
+        if set(ranks) == {'A', 'K', 'Q', 'J', 'T'}: return "ロイヤルフラッシュ", ranks
         return "ストレートフラッシュ", ranks
     if 4 in rank_counts.values():
         four_kind_rank = [r for r, c in rank_counts.items() if c == 4][0]
@@ -68,10 +61,8 @@ def get_poker_hand_rank(hand):
         three_kind_rank = [r for r, c in rank_counts.items() if c == 3][0]
         pair_rank = [r for r, c in rank_counts.items() if c == 2][0]
         return "フルハウス", [three_kind_rank] * 3 + [pair_rank] * 2
-    if is_flush:
-        return "フラッシュ", ranks
-    if is_straight:
-        return "ストレート", ranks
+    if is_flush: return "フラッシュ", ranks
+    if is_straight: return "ストレート", ranks
     if 3 in rank_counts.values():
         three_kind_rank = [r for r, c in rank_counts.items() if c == 3][0]
         other_cards = sorted([r for r in ranks if r != three_kind_rank], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
@@ -85,80 +76,303 @@ def get_poker_hand_rank(hand):
         pair_rank = [r for r, c in rank_counts.items() if c == 2][0]
         other_cards = sorted([r for r in ranks if r != pair_rank], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
         return "ワンペア", [pair_rank] * 2 + other_cards
-    
     return "ハイカード", ranks
 
 def get_best_hand(seven_cards):
-    best_rank_name = "ハイカード"
-    best_hand_cards = []
-    best_rank_score = -1
-    
-    hand_ranks_order = {
-        "ロイヤルフラッシュ": 9, "ストレートフラッシュ": 8, "フォーカード": 7,
-        "フルハウス": 6, "フラッシュ": 5, "ストレート": 4,
-        "スリーカード": 3, "ツーペア": 2, "ワンペア": 1, "ハイカード": 0
-    }
-
+    best_rank_name, best_hand_cards, best_rank_score = "ハイカード", [], -1
+    hand_ranks_order = {"ロイヤルフラッシュ": 9, "ストレートフラッシュ": 8, "フォーカード": 7, "フルハウス": 6, "フラッシュ": 5, "ストレート": 4, "スリーカード": 3, "ツーペア": 2, "ワンペア": 1, "ハイカード": 0}
     for hand_combination in itertools.combinations(seven_cards, 5):
         rank_name, hand_cards = get_poker_hand_rank(list(hand_combination))
         rank_score = hand_ranks_order[rank_name]
-
         if rank_score > best_rank_score:
-            best_rank_score = rank_score
-            best_rank_name = rank_name
-            best_hand_cards = hand_cards
+            best_rank_score, best_rank_name, best_hand_cards = rank_score, rank_name, hand_cards
         elif rank_score == best_rank_score:
-            # Compare kickers if ranks are the same
             current_best_values = ['23456789TJQKA'.index(r) for r in best_hand_cards]
             new_hand_values = ['23456789TJQKA'.index(r) for r in hand_cards]
             if new_hand_values > current_best_values:
                 best_hand_cards = hand_cards
-
     return best_rank_name, best_hand_cards
 
+class Player:
+    def __init__(self, user: discord.User, chips: int):
+        self.user, self.chips = user, chips
+        self.hand, self.current_bet, self.has_acted, self.is_all_in, self.folded = [], 0, False, False, False
+
 class PokerGame:
-    def __init__(self, interaction: discord.Interaction):
-        self.guild = interaction.guild
-        self.channel = interaction.channel
-        self.starter = interaction.user
-        self.players = []
-        self.deck = []
-        self.community_cards = []
-        self.player_hands = {}
-        self.game_active = False
+    def __init__(self, interaction: discord.Interaction, starting_chips: int):
+        self.channel, self.starter, self.starting_chips = interaction.channel, interaction.user, starting_chips
+        self.players, self.deck, self.community_cards, self.log = [], [], [], []
+        self.pot, self.current_round_bet = 0, 0
+        self.game_phase = 'waiting'
+        self.dealer_index = -1
+        self.main_message, self.action_view_message = None, None
 
     def add_player(self, user: discord.User):
-        if user not in self.players:
-            self.players.append(user)
+        if not any(p.user.id == user.id for p in self.players):
+            self.players.append(Player(user, self.starting_chips))
             return True
         return False
 
-    def start_game(self):
+    def get_player(self, user: discord.User):
+        return next((p for p in self.players if p.user.id == user.id), None)
+
+    def get_active_players(self):
+        return [p for p in self.players if not p.folded and not p.is_all_in]
+
+    def get_hand_players(self):
+        return [p for p in self.players if not p.folded]
+
+    async def start_hand(self, interaction: discord.Interaction):
         if len(self.players) < 2:
-            return False, "プレイヤーが2人未満です。"
-        self.game_active = True
+            await interaction.response.send_message("プレイヤーが2人未満です。", ephemeral=True)
+            return
+        
+        self.game_phase = 'preflop'
         self.deck = list(itertools.product(RANKS, SUITS))
         random.shuffle(self.deck)
-        self.deal_cards()
-        return True, "ゲームを開始しました。"
+        self.community_cards, self.pot, self.current_round_bet = [], 0, 0
+        self.dealer_index = (self.dealer_index + 1) % len(self.players)
 
-    def deal_cards(self):
-        for player in self.players:
-            self.player_hands[player.id] = [self.deck.pop(), self.deck.pop()]
-        self.community_cards = [self.deck.pop() for _ in range(5)]
+        for p in self.players:
+            p.hand = [self.deck.pop(), self.deck.pop()]
+            p.current_bet, p.has_acted, p.folded, p.is_all_in = 0, False, False, False
+
+        # Blinds
+        small_blind_player = self.players[(self.dealer_index + 1) % len(self.players)]
+        big_blind_player = self.players[(self.dealer_index + 2) % len(self.players)]
+        sb_amount = min(5, small_blind_player.chips)
+        bb_amount = min(10, big_blind_player.chips)
+        small_blind_player.chips -= sb_amount
+        small_blind_player.current_bet = sb_amount
+        big_blind_player.chips -= bb_amount
+        big_blind_player.current_bet = bb_amount
+        self.pot = sb_amount + bb_amount
+        self.current_round_bet = bb_amount
+        
+        self.log = [f"新しいハンドが始まりました。ディーラーは {self.players[self.dealer_index].user.display_name} です。",
+                    f"{small_blind_player.user.display_name} がSB {sb_amount} をベット。",
+                    f"{big_blind_player.user.display_name} がBB {bb_amount} をベット。"]
+
+        self.current_player_index = (self.dealer_index + 3) % len(self.players)
+        
+        await interaction.response.send_message("ハンドを開始します...", ephemeral=True, delete_after=1)
+        for p in self.players:
+            hand_str = ' '.join([f"{r}{s}" for r, s in p.hand])
+            await interaction.followup.send(f"{p.user.mention} あなたの手札: **{hand_str}**", ephemeral=True)
+
+        await self.update_main_message(interaction.channel)
+        await self.ask_for_action()
+
+    async def ask_for_action(self):
+        player = self.players[self.current_player_index]
+        if player.folded or player.is_all_in:
+            await self.next_turn()
+            return
+
+        if self.action_view_message: await self.action_view_message.delete()
+        
+        view = PokerActionView(self)
+        embed = discord.Embed(title=f"{player.user.display_name} のアクション", description=f"あなたのチップ: {player.chips}\n現在のベット額: {player.current_bet}", color=discord.Color.blue())
+        self.action_view_message = await self.channel.send(content=player.user.mention, embed=embed, view=view)
+
+    async def handle_action(self, interaction: discord.Interaction, action: str, amount: int = 0):
+        player = self.get_player(interaction.user)
+        if not player or player != self.players[self.current_player_index]:
+            await interaction.response.send_message("あなたのターンではありません。", ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+
+        if action == 'fold':
+            player.folded = True
+            self.log.append(f"{player.user.display_name} がフォールドしました。")
+        elif action == 'call':
+            call_amount = self.current_round_bet - player.current_bet
+            if call_amount >= player.chips: # All-in
+                call_amount = player.chips
+                player.is_all_in = True
+                self.log.append(f"{player.user.display_name} がオールイン ({call_amount}) しました。")
+            else:
+                self.log.append(f"{player.user.display_name} がコール ({call_amount}) しました。")
+            player.chips -= call_amount
+            player.current_bet += call_amount
+            self.pot += call_amount
+        elif action == 'check':
+            self.log.append(f"{player.user.display_name} がチェックしました。")
+        elif action == 'raise':
+            raise_total = amount
+            self.current_round_bet = raise_total
+            bet_amount = raise_total - player.current_bet
+            player.chips -= bet_amount
+            player.current_bet += bet_amount
+            self.pot += bet_amount
+            if player.chips == 0: player.is_all_in = True
+            self.log.append(f"{player.user.display_name} が {raise_total} にレイズしました。")
+
+        player.has_acted = True
+        await self.next_turn()
+
+    async def next_turn(self):
+        if len(self.get_hand_players()) == 1:
+            await self.end_hand()
+            return
+
+        if all(p.has_acted or p.folded or p.is_all_in for p in self.get_hand_players()):
+            await self.next_phase()
+            return
+
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        await self.update_main_message(self.channel)
+        await self.ask_for_action()
+
+    async def next_phase(self):
+        self.current_round_bet = 0
+        for p in self.players:
+            p.current_bet = 0
+            p.has_acted = False
+        
+        self.current_player_index = (self.dealer_index + 1) % len(self.players)
+
+        if self.game_phase == 'preflop':
+            self.game_phase = 'flop'
+            self.community_cards.extend([self.deck.pop() for _ in range(3)])
+            self.log.append("--- フロップ ---")
+        elif self.game_phase == 'flop':
+            self.game_phase = 'turn'
+            self.community_cards.append(self.deck.pop())
+            self.log.append("--- ターン ---")
+        elif self.game_phase == 'turn':
+            self.game_phase = 'river'
+            self.community_cards.append(self.deck.pop())
+            self.log.append("--- リバー ---")
+        elif self.game_phase == 'river':
+            await self.end_hand()
+            return
+        
+        await self.update_main_message(self.channel)
+        await self.ask_for_action()
+
+    async def end_hand(self):
+        if self.action_view_message: await self.action_view_message.delete()
+        
+        hand_players = self.get_hand_players()
+        if len(hand_players) == 1:
+            winner = hand_players[0]
+            winner.chips += self.pot
+            self.log.append(f"{winner.user.display_name} がポット({self.pot})を獲得しました。")
+        else: # Showdown
+            results = []
+            for player in hand_players:
+                best_rank, best_cards = get_best_hand(player.hand + self.community_cards)
+                results.append({'player': player, 'rank': best_rank, 'cards': best_cards})
+            
+            # Sort results to find the winner
+            hand_ranks_order = {"ロイヤルフラッシュ": 9, "ストレートフラッシュ": 8, "フォーカード": 7, "フルハウス": 6, "フラッシュ": 5, "ストレート": 4, "スリーカード": 3, "ツーペア": 2, "ワンペア": 1, "ハイカード": 0}
+            def get_sort_key(res):
+                card_values = ['23456789TJQKA'.index(r) for r in res['cards']]
+                return (hand_ranks_order[res['rank']], card_values)
+            results.sort(key=get_sort_key, reverse=True)
+            
+            winner_data = results[0]
+            winner = winner_data['player']
+            winner.chips += self.pot
+            
+            self.log.append("--- ショーダウン ---")
+            for res in results:
+                p = res['player']
+                hand_str = ' '.join([f"{r}{s}" for r, s in p.hand])
+                self.log.append(f"{p.user.display_name}: {res['rank']} (手札: {hand_str})")
+            self.log.append(f"勝者: {winner.user.display_name} (役: {winner_data['rank']})")
+            self.log.append(f"{winner.user.display_name} がポット({self.pot})を獲得しました。")
+
+        await self.update_main_message(self.channel, hand_ended=True)
+        self.game_phase = 'waiting'
+
+    async def update_main_message(self, channel, hand_ended=False):
+        embed = discord.Embed(title="テキサスホールデム", color=discord.Color.green())
+        community_str = ' '.join([f"{r}{s}" for r, s in self.community_cards]) if self.community_cards else "なし"
+        embed.add_field(name="場のカード", value=community_str, inline=False)
+        embed.add_field(name="ポット", value=str(self.pot), inline=False)
+        
+        player_statuses = []
+        for p in self.players:
+            status = "フォールド" if p.folded else f"チップ: {p.chips} | ベット: {p.current_bet}"
+            if p == self.players[self.dealer_index]: status += " (D)"
+            player_statuses.append(f"{p.user.display_name}: {status}")
+        embed.add_field(name="プレイヤー", value="\n".join(player_statuses), inline=False)
+        
+        if self.log:
+            embed.add_field(name="ログ", value="\n".join(self.log[-5:]), inline=False)
+
+        if hand_ended:
+            embed.set_footer(text="ハンド終了。`/poker deal` で次のハンドを開始します。")
+
+        if self.main_message:
+            await self.main_message.edit(embed=embed)
+        else:
+            self.main_message = await channel.send(embed=embed)
+
+class PokerActionView(View):
+    def __init__(self, game: PokerGame):
+        super().__init__(timeout=120)
+        self.game = game
+        player = game.players[game.current_player_index]
+        
+        # Dynamically enable/disable buttons
+        self.children[0].disabled = player.current_bet < game.current_round_bet # Check
+        self.children[1].disabled = player.current_bet >= game.current_round_bet or player.chips <= (game.current_round_bet - player.current_bet) # Call
+        self.children[3].disabled = player.chips <= game.current_round_bet # Raise
+
+    @discord.ui.button(label="チェック", style=discord.ButtonStyle.secondary)
+    async def check(self, interaction: discord.Interaction, button: Button):
+        await self.game.handle_action(interaction, 'check')
+
+    @discord.ui.button(label="コール", style=discord.ButtonStyle.primary)
+    async def call(self, interaction: discord.Interaction, button: Button):
+        await self.game.handle_action(interaction, 'call')
+
+    @discord.ui.button(label="フォールド", style=discord.ButtonStyle.danger)
+    async def fold(self, interaction: discord.Interaction, button: Button):
+        await self.game.handle_action(interaction, 'fold')
+
+    @discord.ui.button(label="レイズ", style=discord.ButtonStyle.success)
+    async def raise_btn(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(RaiseModal(self.game))
+
+class RaiseModal(Modal, title="レイズ額"):
+    def __init__(self, game: PokerGame):
+        super().__init__()
+        self.game = game
+        player = game.players[game.current_player_index]
+        min_raise = game.current_round_bet * 2
+        self.amount = TextInput(label=f"レイズ後の合計ベット額 (最小: {min_raise})", placeholder=str(min_raise), required=True)
+        self.add_item(self.amount)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            amount = int(self.amount.value)
+            player = self.game.players[self.game.current_player_index]
+            min_raise = self.game.current_round_bet * 2
+            if amount < min_raise:
+                await interaction.response.send_message(f"レイズ額が小さすぎます。最小額は {min_raise} です。", ephemeral=True)
+                return
+            if amount > player.chips + player.current_bet:
+                await interaction.response.send_message("チップが足りません。", ephemeral=True)
+                return
+            await self.game.handle_action(interaction, 'raise', amount=amount)
+        except ValueError:
+            await interaction.response.send_message("数値を入力してください。", ephemeral=True)
 
 class PokerJoinView(View):
     def __init__(self, game: PokerGame):
-        super().__init__(timeout=300) # 5 minutes to join
+        super().__init__(timeout=300)
         self.game = game
 
     @discord.ui.button(label="参加する", style=discord.ButtonStyle.green)
     async def join_button(self, interaction: discord.Interaction, button: Button):
         if self.game.add_player(interaction.user):
             await interaction.response.send_message(f"{interaction.user.mention} がゲームに参加しました。", ephemeral=True)
-            
-            # Update the list of players in the main message
-            player_list = "\n".join([p.mention for p in self.game.players])
+            player_list = "\n".join([f"{p.user.mention} ({p.chips}チップ)" for p in self.game.players])
             embed = interaction.message.embeds[0]
             embed.set_field_at(0, name="参加者", value=player_list, inline=False)
             await interaction.message.edit(embed=embed)
@@ -179,103 +393,42 @@ client = MyClient()
 poker_group = app_commands.Group(name="poker", description="ポーカーゲームを管理します。")
 
 @poker_group.command(name="start", description="ポーカーゲームを開始します。")
-async def poker_start(interaction: discord.Interaction):
-    channel_id = interaction.channel_id
-    if channel_id in poker_games:
-        await interaction.response.send_message("このチャンネルでは既にゲームが進行中です。")
+@app_commands.describe(starting_chips="初期チップ量")
+async def poker_start(interaction: discord.Interaction, starting_chips: int = 1000):
+    if interaction.channel_id in poker_games:
+        await interaction.response.send_message("このチャンネルでは既にゲームが進行中です。", ephemeral=True)
         return
 
-    game = PokerGame(interaction)
-    poker_games[channel_id] = game
+    game = PokerGame(interaction, starting_chips)
+    poker_games[interaction.channel_id] = game
     game.add_player(interaction.user)
 
-    view = PokerJoinView(game)
-    
-    embed = discord.Embed(title="ポーカーゲーム募集中！", description=f"{interaction.user.mention} がゲームを開始しました。\n`/poker deal` でゲームをスタートします。", color=discord.Color.blue())
-    embed.add_field(name="参加者", value=interaction.user.mention, inline=False)
-    
-    await interaction.response.send_message(embed=embed, view=view)
+    embed = discord.Embed(title="ポーカーゲーム募集中！", description=f"{interaction.user.mention} がゲームを開始しました (初期チップ: {starting_chips})。\n`/poker deal` で最初のハンドをスタートします。", color=discord.Color.blue())
+    embed.add_field(name="参加者", value=f"{interaction.user.mention} ({starting_chips}チップ)", inline=False)
+    await interaction.response.send_message(embed=embed, view=PokerJoinView(game))
 
-@poker_group.command(name="deal", description="カードを配り、ゲームを開始します。")
+@poker_group.command(name="deal", description="カードを配り、ハンドを開始します。")
 async def poker_deal(interaction: discord.Interaction):
-    channel_id = interaction.channel_id
-    if channel_id not in poker_games:
-        await interaction.response.send_message("このチャンネルではゲームが開始されていません。")
+    game = poker_games.get(interaction.channel_id)
+    if not game:
+        await interaction.response.send_message("ゲームが開始されていません。", ephemeral=True)
         return
-
-    game = poker_games[channel_id]
     if interaction.user != game.starter:
         await interaction.response.send_message("ゲームの開始者のみがディールできます。", ephemeral=True)
         return
-    
-    if len(game.players) < 2:
-        await interaction.response.send_message("プレイヤーが2人未満です。ゲームを開始できません。", ephemeral=True)
+    if game.game_phase != 'waiting':
+        await interaction.response.send_message("ハンドの途中です。", ephemeral=True)
         return
-
-    game.start_game()
-
-    # Send hands to players via DM
-    for player in game.players:
-        hand_str = ' '.join([f"{r}{s}" for r, s in game.player_hands[player.id]])
-        try:
-            await player.send(f"あなたの手札: **{hand_str}**")
-        except discord.Forbidden:
-            await interaction.channel.send(f"{player.mention} にDMを送信できませんでした。DMの受信を許可してください。")
-
-    # Determine winner
-    results = []
-    for player in game.players:
-        player_hand = game.player_hands[player.id]
-        all_cards = player_hand + game.community_cards
-        best_rank, best_cards = get_best_hand(all_cards)
-        results.append((player, best_rank, best_cards))
-
-    # Sort results to find the winner
-    hand_ranks_order = {
-        "ロイヤルフラッシュ": 9, "ストレートフラッシュ": 8, "フォーカード": 7,
-        "フルハウス": 6, "フラッシュ": 5, "ストレート": 4,
-        "スリーカード": 3, "ツーペア": 2, "ワンペア": 1, "ハイカード": 0
-    }
     
-    def get_sort_key(result):
-        player, rank, cards = result
-        rank_score = hand_ranks_order[rank]
-        card_values = ['23456789TJQKA'.index(r) for r in cards]
-        return (rank_score, card_values)
-
-    results.sort(key=get_sort_key, reverse=True)
-    
-    winner, winner_rank, winner_cards = results[0]
-
-    # Display results in the channel
-    community_cards_str = ' '.join([f"{r}{s}" for r, s in game.community_cards])
-    
-    embed = discord.Embed(title="ポーカー結果", color=discord.Color.gold())
-    embed.add_field(name="場のカード", value=f"**{community_cards_str}**", inline=False)
-
-    result_text = ""
-    for player, rank, cards in results:
-        hand_str = ' '.join([f"{r}{s}" for r, s in game.player_hands[player.id]])
-        result_text += f"{player.mention}: {rank} ({hand_str})\n"
-    
-    embed.add_field(name="各プレイヤーの手札と役", value=result_text, inline=False)
-    
-    winner_hand_str = ' '.join([f"{r}{s}" for r, s in game.player_hands[winner.id]])
-    embed.add_field(name="勝者", value=f"**{winner.mention}** が **{winner_rank}** で勝利！\n(手札: {winner_hand_str})", inline=False)
-
-    await interaction.response.send_message(embed=embed)
-    
-    # Clean up the game
-    del poker_games[channel_id]
+    await game.start_hand(interaction)
 
 @poker_group.command(name="end", description="現在のポーカーゲームを終了します。")
 async def poker_end(interaction: discord.Interaction):
-    channel_id = interaction.channel_id
-    if channel_id in poker_games:
-        game = poker_games[channel_id]
-        # Allow starter or user with manage_channels permission to end the game
+    if interaction.channel_id in poker_games:
+        game = poker_games[interaction.channel_id]
         if interaction.user == game.starter or interaction.user.guild_permissions.manage_channels:
-            del poker_games[channel_id]
+            if game.action_view_message: await game.action_view_message.delete()
+            del poker_games[interaction.channel_id]
             await interaction.response.send_message("ゲームを終了しました。")
         else:
             await interaction.response.send_message("ゲームの開始者または管理者のみがゲームを終了できます。", ephemeral=True)
@@ -294,14 +447,10 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if "宇佐美" in message.content.lower():
-        await message.add_reaction("<:usami:1159384863309316146>")
-    if "レポート" in message.content.lower():
-        await message.add_reaction("<:report:1140109232738414692>")
-    if "よぴぴ丸" in message.content.lower():
-        await message.add_reaction("<:ero:1192928073495105636>")
-    if "あります" in message.content.lower():
-        await message.channel.send("ねぇよ")
+    if "宇佐美" in message.content.lower(): await message.add_reaction("<:usami:1159384863309316146>")
+    if "レポート" in message.content.lower(): await message.add_reaction("<:report:1140109232738414692>")
+    if "よぴぴ丸" in message.content.lower(): await message.add_reaction("<:ero:1192928073495105636>")
+    if "あります" in message.content.lower(): await message.channel.send("ねぇよ")
 
 @client.tree.command(name='ping', description='pingを返します')
 async def ping(interaction: discord.Interaction):
@@ -310,25 +459,20 @@ async def ping(interaction: discord.Interaction):
 @client.tree.command(name='progress', description='進捗を返します')
 async def progress(interaction: discord.Interaction):
     random_number = random.randint(0, 100)
-    if(random_number==0):
-        await interaction.response.send_message("完成しませんでした...")
-    elif(random_number==100):
-        await interaction.response.send_message("提出しました!")
-    else:
-        await interaction.response.send_message(f"{random_number}%完成しました!")
+    if(random_number==0): await interaction.response.send_message("完成しませんでした...")
+    elif(random_number==100): await interaction.response.send_message("提出しました!")
+    else: await interaction.response.send_message(f"{random_number}%完成しました!")
 
 @client.tree.command(name='usami', description='宇佐美を返します')
 async def usami(interaction: discord.Interaction):
     random_number = random.randint(0, 2)
-    if(random_number==0):
-        await interaction.response.send_message("<:usami:1159384863309316146>")
-    if(random_number==1):
-        await interaction.response.send_message(" <:usami_karishin:1165885355065606154>")
-    if(random_number==2):
-        await interaction.response.send_message(" <:usami_using_pc:1174190208808390758>")
+    if(random_number==0): await interaction.response.send_message("<:usami:1159384863309316146>")
+    if(random_number==1): await interaction.response.send_message(" <:usami_karishin:1165885355065606154>")
+    if(random_number==2): await interaction.response.send_message(" <:usami_using_pc:1174190208808390758>")
 
 @client.tree.command(name='meigen', description='waon鯖名言集')
 async def meigen(interaction: discord.Interaction):
+    # ... (meigen command remains the same)
     random_number = random.randint(0, 18)
     if(random_number==0):
         await interaction.response.send_message("yomo「エロいショタの方が1000倍見たい」- 2025/02/03 1:21")
@@ -368,7 +512,7 @@ async def meigen(interaction: discord.Interaction):
         await interaction.response.send_message("山口伝説tier　tier2：鼻血")
     if(random_number==18):
         await interaction.response.send_message("山口「電情落として、成績落として、バイト落としてあと落とすの命だけでガチ鬱」- 2025/04/17 16:22")
-    
+
 @client.tree.command(name='gemini', description='API使いすぎたら殺す(無料枠分使い果たすなカスども)')
 @app_commands.describe(message="プロンプト")
 async def gemini(interaction: discord.Interaction, message: str):
