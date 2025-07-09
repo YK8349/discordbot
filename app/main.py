@@ -168,13 +168,21 @@ class PokerGame:
 
     async def begin_betting(self):
         self.game_phase = 'preflop'
-        # Blinds
+        # Manually handle blinds
         small_blind_player = self.players[(self.dealer_index + 1) % len(self.players)]
         big_blind_player = self.players[(self.dealer_index + 2) % len(self.players)]
+        
         sb_amount = min(5, small_blind_player.chips)
+        small_blind_player.chips -= sb_amount
+        small_blind_player.current_bet = sb_amount
+        self.pot += sb_amount
+        
         bb_amount = min(10, big_blind_player.chips)
-        await self.process_action(small_blind_player, 'bet', sb_amount)
-        await self.process_action(big_blind_player, 'bet', bb_amount, is_blind=True)
+        big_blind_player.chips -= bb_amount
+        big_blind_player.current_bet = bb_amount
+        self.pot += bb_amount
+        
+        self.current_round_bet = bb_amount
         
         self.log = [f"新しいハンドが始まりました。ディーラーは {self.players[self.dealer_index].user.display_name} です。",
                     f"{small_blind_player.user.display_name} がSB {sb_amount} をベット。",
@@ -200,7 +208,7 @@ class PokerGame:
             embed = discord.Embed(title=f"{player.user.display_name} のアクション", description=f"あなたのチップ: {player.chips}\n現在のベット額: {player.current_bet}", color=discord.Color.blue())
             self.action_view_message = await self.channel.send(content=player.user.mention, embed=embed, view=view)
 
-    async def process_action(self, player: Player, action: str, amount: int = 0, is_blind=False):
+    async def process_action(self, player: Player, action: str, amount: int = 0):
         if action == 'fold':
             player.folded = True
             self.log.append(f"{player.user.display_name} がフォールドしました。")
@@ -225,15 +233,9 @@ class PokerGame:
             self.pot += bet_amount
             if player.chips == 0: player.is_all_in = True
             self.log.append(f"{player.user.display_name} が {amount} にレイズしました。")
-        elif action == 'bet': # For blinds
-            player.chips -= amount
-            player.current_bet = amount
-            self.pot += amount
-            if not is_blind: self.current_round_bet = amount
 
-        if not is_blind: 
-            player.has_acted = True
-            await self.next_turn()
+        player.has_acted = True
+        await self.next_turn()
 
     async def cpu_make_decision(self, player: Player):
         _, _, hand_score = get_best_hand(player.hand + self.community_cards)
