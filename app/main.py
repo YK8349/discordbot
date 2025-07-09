@@ -166,6 +166,11 @@ class PokerGame:
 
         await interaction.response.send_message("各プレイヤーは下のボタンを押して手札を確認してください。", view=ViewHandView(self))
 
+        # Show dealer's hand to the person who initiated the deal
+        dealer_player = self.players[self.dealer_index]
+        dealer_hand_str = ' '.join([f"{r}{s}" for r, s in dealer_player.hand])
+        await interaction.followup.send(f"ディーラー ({dealer_player.user.display_name}) の手札: **{dealer_hand_str}**", ephemeral=True)
+
     async def begin_betting(self):
         
         self.game_phase = 'preflop'
@@ -380,17 +385,30 @@ class RaiseModal(Modal, title="レイズ額"):
 class ViewHandView(View):
     def __init__(self, game: PokerGame):
         super().__init__(timeout=60)
-        self.game, self.players_who_viewed = game, set()
+        self.game = game
+        self.players_who_viewed = set()
+        self.human_players_count = len([p for p in game.players if not p.is_cpu])
 
     @discord.ui.button(label="手札を見る", style=discord.ButtonStyle.secondary)
     async def view_hand(self, interaction: discord.Interaction, button: Button):
         player = self.game.get_player(interaction.user)
-        if not player: await interaction.response.send_message("あなたはゲームに参加していません。", ephemeral=True); return
-        if player.user.id in self.players_who_viewed: await interaction.response.send_message("既に手札を確認しています。", ephemeral=True); return
+        if not player:
+            await interaction.response.send_message("あなたはゲームに参加していません。", ephemeral=True)
+            return
+        
+        if player.user.id in self.players_who_viewed:
+            await interaction.response.send_message("既に手札を確認しています。", ephemeral=True)
+            return
+
         hand_str = ' '.join([f"{r}{s}" for r, s in player.hand])
         await interaction.response.send_message(f"あなたの手札: **{hand_str}**", ephemeral=True)
         self.players_who_viewed.add(player.user.id)
-        if len(self.players_who_viewed) == len(self.game.players): await interaction.message.delete(); await self.game.begin_betting()
+
+        # Check if all HUMAN players have viewed their hands
+        if len(self.players_who_viewed) == self.human_players_count:
+            if interaction.message:
+                await interaction.message.delete()
+            await self.game.begin_betting()
 
 class PokerJoinView(View):
     def __init__(self, game: PokerGame):
