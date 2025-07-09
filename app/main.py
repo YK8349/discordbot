@@ -167,6 +167,7 @@ class PokerGame:
         await interaction.response.send_message("各プレイヤーは下のボタンを押して手札を確認してください。", view=ViewHandView(self))
 
     async def begin_betting(self):
+        
         self.game_phase = 'preflop'
         # Manually handle blinds
         small_blind_player = self.players[(self.dealer_index + 1) % len(self.players)]
