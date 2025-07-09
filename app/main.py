@@ -35,8 +35,6 @@ class MyClient(discord.Client):
 
 client = MyClient()
 
-client.tree.add_command()
-
 @client.event
 async def on_ready():
     print(f'{client.user} がログインしました')
