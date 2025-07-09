@@ -417,6 +417,7 @@ async def poker_start(interaction: discord.Interaction):
     embed = discord.Embed(title="ポーカーゲーム募集中！", description=f"{interaction.user.mention} がゲームを開始しました。\n`/poker add_cpu` でCPUを追加できます。\n`/poker deal` で最初のハンドをスタートします。", color=discord.Color.blue())
     embed.add_field(name="参加者", value=player_list, inline=False)
     await interaction.response.send_message(embed=embed, view=PokerJoinView(game))
+    game.main_message = await interaction.original_response()
 
 @poker_group.command(name="add_cpu", description="ゲームにCPUプレイヤーを追加します。")
 @app_commands.describe(count="追加するCPUの数")
