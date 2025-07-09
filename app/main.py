@@ -187,6 +187,7 @@ class PokerGame:
         await self.start_round()
 
     async def start_round(self):
+        self.game_in_progress = True
         self.deck = Deck()
         self.community_cards = []
         self.pot = 0
