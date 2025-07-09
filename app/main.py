@@ -402,6 +402,23 @@ class PokerJoinView(View):
             embed = interaction.message.embeds[0]; embed.set_field_at(0, name="参加者", value=player_list, inline=False); await interaction.message.edit(embed=embed)
         else: await interaction.response.send_message("既に参加しています。", ephemeral=True)
 
+    @discord.ui.button(label="CPUを追加", style=discord.ButtonStyle.secondary)
+    async def add_cpu_button(self, interaction: discord.Interaction, button: Button):
+        if interaction.user.id != self.game.starter.id:
+            await interaction.response.send_message("ゲームの開始者のみがCPUを追加できます。", ephemeral=True); return
+
+        if self.game.game_phase != 'waiting':
+            await interaction.response.send_message("ゲームの進行中にCPUは追加できません。", ephemeral=True); return
+        
+        cpu_user = CPUUser(name=f"CPU {len([p for p in self.game.players if p.is_cpu]) + 1}")
+        self.game.add_player(cpu_user, is_cpu=True)
+        
+        player_list = "\n".join([f"{p.user.display_name} ({p.chips}チップ)" for p in self.game.players])
+        embed = interaction.message.embeds[0]
+        embed.set_field_at(0, name="参加者", value=player_list, inline=False)
+        await interaction.message.edit(embed=embed)
+        await interaction.response.send_message(f"CPUプレイヤーを追加しました。", ephemeral=True)
+
 class MyClient(discord.Client):
     def __init__(self): super().__init__(intents=intents); self.tree = app_commands.CommandTree(self)
     async def setup_hook(self): guild = discord.Object(id=GUILD_ID); self.tree.copy_global_to(guild=guild); await self.tree.sync(guild=guild)
@@ -414,23 +431,12 @@ async def poker_start(interaction: discord.Interaction):
     if interaction.channel_id in poker_games: await interaction.response.send_message("このチャンネルでは既にゲームが進行中です。", ephemeral=True); return
     game = PokerGame(interaction); poker_games[interaction.channel_id] = game; game.add_player(interaction.user)
     player_list = "\n".join([f"{p.user.display_name} ({p.chips}チップ)" for p in game.players])
-    embed = discord.Embed(title="ポーカーゲーム募集中！", description=f"{interaction.user.mention} がゲームを開始しました。\n`/poker add_cpu` でCPUを追加できます。\n`/poker deal` で最初のハンドをスタートします。", color=discord.Color.blue())
+    embed = discord.Embed(title="ポーカーゲーム募集中！", description=f"{interaction.user.mention} がゲームを開始しました。\n参加者が揃ったら `/poker deal` で最初のハンドをスタートします。", color=discord.Color.blue())
     embed.add_field(name="参加者", value=player_list, inline=False)
     await interaction.response.send_message(embed=embed, view=PokerJoinView(game))
     game.main_message = await interaction.original_response()
 
-@poker_group.command(name="add_cpu", description="ゲームにCPUプレイヤーを追加します。")
-@app_commands.describe(count="追加するCPUの数")
-async def add_cpu(interaction: discord.Interaction, count: int = 1):
-    game = poker_games.get(interaction.channel_id)
-    if not game: await interaction.response.send_message("ゲームが開始されていません。", ephemeral=True); return
-    if game.game_phase != 'waiting': await interaction.response.send_message("ゲームの進行中にCPUは追加できません。", ephemeral=True); return
-    for i in range(count):
-        cpu_user = CPUUser(name=f"CPU {i+1}")
-        game.add_player(cpu_user, is_cpu=True)
-    player_list = "\n".join([f"{p.user.display_name} ({p.chips}チップ)" for p in game.players])
-    embed = game.main_message.embeds[0]; embed.set_field_at(0, name="参加者", value=player_list, inline=False); await game.main_message.edit(embed=embed)
-    await interaction.response.send_message(f"{count}人のCPUプレイヤーを追加しました。", ephemeral=True)
+
 
 @poker_group.command(name="deal", description="カードを配り、ハンドを開始します。")
 async def poker_deal(interaction: discord.Interaction):
