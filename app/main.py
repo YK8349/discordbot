@@ -4,6 +4,7 @@ import os
 import dotenv
 import random
 import google.generativeai as genai
+import itertools
 
 from server import server_thread
 
@@ -148,6 +149,133 @@ async def gemini(interaction: discord.Interaction, message: str):
             await interaction.followup.send(response.text[:2000])
     except Exception as e:
         await interaction.followup.send(f"エラーが発生しました: {e}")
+
+
+# Helper functions for poker
+def get_poker_hand_rank(hand):
+    # hand is a list of 5 cards, where each card is a tuple (rank, suit)
+    ranks = sorted([card[0] for card in hand], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
+    suits = [card[1] for card in hand]
+    rank_counts = {r: ranks.count(r) for r in ranks}
+    is_flush = len(set(suits)) == 1
+    
+    # Check for straight
+    unique_ranks = sorted(list(set(ranks)), key=lambda r: '23456789TJQKA'.index(r))
+    is_straight = False
+    if len(unique_ranks) == 5:
+        # Ace-high straight
+        if '23456789TJQKA'.find(''.join(unique_ranks)) != -1:
+            is_straight = True
+        # Ace-low straight (A, 2, 3, 4, 5)
+        elif set(unique_ranks) == {'A', '2', '3', '4', '5'}:
+            is_straight = True
+            ranks = ['5', '4', '3', '2', 'A'] # Reorder for correct display
+
+    # Hand ranking logic
+    if is_straight and is_flush:
+        if set(ranks) == {'A', 'K', 'Q', 'J', 'T'}:
+            return "ロイヤルフラッシュ", ranks
+        return "ストレートフラッシュ", ranks
+    if 4 in rank_counts.values():
+        four_kind_rank = [r for r, c in rank_counts.items() if c == 4][0]
+        other_cards = sorted([r for r in ranks if r != four_kind_rank], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
+        return "フォーカード", [four_kind_rank] * 4 + other_cards
+    if sorted(rank_counts.values()) == [2, 3]:
+        three_kind_rank = [r for r, c in rank_counts.items() if c == 3][0]
+        pair_rank = [r for r, c in rank_counts.items() if c == 2][0]
+        return "フルハウス", [three_kind_rank] * 3 + [pair_rank] * 2
+    if is_flush:
+        return "フラッシュ", ranks
+    if is_straight:
+        return "ストレート", ranks
+    if 3 in rank_counts.values():
+        three_kind_rank = [r for r, c in rank_counts.items() if c == 3][0]
+        other_cards = sorted([r for r in ranks if r != three_kind_rank], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
+        return "スリーカード", [three_kind_rank] * 3 + other_cards
+    if list(rank_counts.values()).count(2) == 2:
+        pairs = [r for r, c in rank_counts.items() if c == 2]
+        pairs.sort(key=lambda r: '23456789TJQKA'.index(r), reverse=True)
+        other_card = [r for r, c in rank_counts.items() if c == 1][0]
+        return "ツーペア", [pairs[0]]*2 + [pairs[1]]*2 + [other_card]
+    if 2 in rank_counts.values():
+        pair_rank = [r for r, c in rank_counts.items() if c == 2][0]
+        other_cards = sorted([r for r in ranks if r != pair_rank], key=lambda r: '23456789TJQKA'.index(r), reverse=True)
+        return "ワンペア", [pair_rank] * 2 + other_cards
+    
+    return "ハイカード", ranks
+
+def get_best_hand(seven_cards):
+    best_rank_name = "ハイカード"
+    best_hand_cards = []
+    best_rank_score = -1
+    
+    hand_ranks_order = {
+        "ロイヤルフラッシュ": 9, "ストレートフラッシュ": 8, "フォーカード": 7,
+        "フルハウス": 6, "フラッシュ": 5, "ストレート": 4,
+        "スリーカード": 3, "ツーペア": 2, "ワンペア": 1, "ハイカード": 0
+    }
+
+    for hand_combination in itertools.combinations(seven_cards, 5):
+        rank_name, hand_cards = get_poker_hand_rank(list(hand_combination))
+        rank_score = hand_ranks_order[rank_name]
+
+        if rank_score > best_rank_score:
+            best_rank_score = rank_score
+            best_rank_name = rank_name
+            best_hand_cards = hand_cards
+        elif rank_score == best_rank_score:
+            # Compare kickers if ranks are the same
+            current_best_values = ['23456789TJQKA'.index(r) for r in best_hand_cards]
+            new_hand_values = ['23456789TJQKA'.index(r) for r in hand_cards]
+            if new_hand_values > current_best_values:
+                best_hand_cards = hand_cards
+
+    return best_rank_name, best_hand_cards
+
+
+@client.tree.command(name='poker', description='ポーカーをプレイします')
+async def poker(interaction: discord.Interaction):
+    # --- ポーカーゲームの実装 ---
+    suits = ['♠', '♥', '♦', '♣']
+    ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+    deck = list(itertools.product(ranks, suits))
+    random.shuffle(deck)
+
+    # カードを配る
+    player_hand = [deck.pop(), deck.pop()]
+    community_cards = [deck.pop() for _ in range(5)]
+    
+    # 手札とコミュニティカードを結合
+    all_cards = player_hand + community_cards
+
+    # 最高の役を判定
+    best_rank, best_cards_ranks_only = get_best_hand(all_cards)
+
+    # 役に使われたカードを特定する (少し複雑なロジック)
+    # 注意: このロジックは簡略化されており、全く同じランクのカードが複数ある場合に正確でない可能性があります。
+    # 例えば、プレイヤーが A♠、コミュニティに A♥ A♦ A♣ がある場合など。
+    # しかし、ほとんどのケースで視覚的に分かりやすくなります。
+    best_hand_display = []
+    temp_all_cards = list(all_cards)
+    for rank in best_cards_ranks_only:
+        for card in temp_all_cards:
+            if card[0] == rank:
+                best_hand_display.append(card)
+                temp_all_cards.remove(card)
+                break
+
+    # カードを文字列に変換
+    player_hand_str = ' '.join([f"{r}{s}" for r, s in player_hand])
+    community_cards_str = ' '.join([f"{r}{s}" for r, s in community_cards])
+    best_hand_str = ' '.join([f"{r}{s}" for r, s in best_hand_display])
+
+    # Embedを作成
+    embed = discord.Embed(title="ポーカー", color=discord.Color.green())
+    embed.add_field(name="あなたの手札", value=f"**{player_hand_str}**", inline=False)
+    embed.add_field(name="場のカード", value=f"**{community_cards_str}**", inline=False)
+    embed.add_field(name="結果", value=f"**役: {best_rank}**\n**手札: {best_hand_str}**", inline=False)
+    
+    await interaction.response.send_message(embed=embed)
 
 
 # Botの起動
