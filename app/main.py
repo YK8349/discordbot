@@ -545,7 +545,7 @@ class RaiseModal(Modal, title='レイズ額'):
 
 class PokerView(View):
     def __init__(self, game):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
         self.game = game
         player = game.players[game.current_player_index]
         can_check = player.bet >= game.current_bet
@@ -562,13 +562,6 @@ class PokerView(View):
             return True
         await interaction.response.send_message("あなたのターンではありません。", ephemeral=True)
         return False
-
-    async def on_timeout(self):
-        game = self.game
-        player = game.players[game.current_player_index]
-        if game.game_in_progress and not player.is_cpu:
-            await game.handle_action(player, 'fold')
-            await game.interaction.channel.send(f"{player.name} は時間切れでフォールドしました。")
 
     @discord.ui.button(label="チェック", style=discord.ButtonStyle.secondary, custom_id="poker_check")
     async def check_button(self, interaction: discord.Interaction, button: Button):
@@ -635,6 +628,19 @@ class PokerSetupView(View):
             self.stop()
             await interaction.response.defer()
             await game.start_game()
+
+    @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger)
+    async def cancel_game_button(self, interaction: discord.Interaction, button: Button):
+        if interaction.user.id != self.interaction.user.id:
+            return await interaction.response.send_message("募集をキャンセルできるのはホストのみです。", ephemeral=True)
+
+        game = poker_games.get(self.interaction.channel.id)
+        if game and not game.game_in_progress:
+            self.stop()
+            await interaction.response.defer()
+            message = await self.interaction.original_response()
+            await message.edit(content="ゲーム募集をキャンセルしました。", view=None)
+            poker_games.pop(self.interaction.channel.id, None)
 
 
 @client.tree.command(name='poker', description='テキサスホールデムポーカーを開始します。')
