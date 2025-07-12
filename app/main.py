@@ -25,7 +25,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # 使用するモデルを指定
-model = genai.GenerativeModel('gemini-pro') 
+model = genai.GenerativeModel('gemini-2.5-flash') 
 
 GUILD_ID = 1127013631763169301  # テスト用サーバーIDに置き換えてください（任意）
 
