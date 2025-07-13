@@ -134,7 +134,7 @@ class Deck:
         return None
 
 class Player:
-    def __init__(self, user, chips=1000, is_cpu=False):
+    def __init__(self, user, chips=1000, is_cpu=False, is_gemini=False):
         self.user = user
         self.hand = []
         self.chips = chips
@@ -143,6 +143,7 @@ class Player:
         self.is_folded = False
         self.is_all_in = False
         self.is_cpu = is_cpu
+        self.is_gemini = is_gemini
 
     @property
     def name(self):
@@ -150,10 +151,11 @@ class Player:
 
 
 class PokerGame:
-    def __init__(self, interaction, cpu_players=0):
+    def __init__(self, interaction, cpu_players=0, gemini_players=0):
         self.interaction = interaction
         self.players = []
         self.cpu_players_to_add = cpu_players
+        self.gemini_players_to_add = gemini_players
         self.deck = Deck()
         self.community_cards = []
         self.pot = 0
@@ -169,9 +171,9 @@ class PokerGame:
         self.action_view = None
         self.is_betting_round_active = False
 
-    def add_player(self, user, is_cpu=False):
+    def add_player(self, user, is_cpu=False, is_gemini=False):
         if not any(p.user.id == user.id for p in self.players):
-            player = Player(user, is_cpu=is_cpu)
+            player = Player(user, is_cpu=is_cpu, is_gemini=is_gemini)
             self.players.append(player)
             return True
         return False
@@ -267,7 +269,9 @@ class PokerGame:
 
         await self.update_game_state_message()
         
-        if current_player.is_cpu:
+        if current_player.is_gemini:
+            await self.get_gemini_poker_action(current_player)
+        elif current_player.is_cpu:
             await asyncio.sleep(2)
             # Simple CPU logic
             amount_to_call = self.current_bet - current_player.bet
@@ -282,6 +286,122 @@ class PokerGame:
                         await self.handle_action(current_player, 'fold')
             else: # Can check
                 await self.handle_action(current_player, 'check')
+
+    async def get_gemini_poker_action(self, player):
+        await self.interaction.channel.send(f"**{player.name} (Gemini) が思考中です...**")
+        hand_str = ' '.join(map(str, player.hand))
+        community_str = ' '.join(map(str, self.community_cards))
+        
+        player_states = []
+        for p in self.players:
+            state = {
+                "name": p.name,
+                "chips": p.chips,
+                "bet": p.bet,
+                "is_folded": p.is_folded,
+                "is_all_in": p.is_all_in,
+                "is_me": p == player
+            }
+            player_states.append(state)
+
+        amount_to_call = self.current_bet - player.bet
+        min_raise = self.current_bet * 2 if self.current_bet > 0 else self.big_blind_amount
+
+        prompt = f"""
+            あなたはプロのテキサスホールデムポーカープレイヤーです。
+            以下のゲーム状況を分析し、あなたの取るべき最適なアクションをJSON形式で出力してください。
+
+            # ゲーム状況
+            - ゲームステージ: {self.game_stage}
+            - あなたの手札: {hand_str}
+            - コミュニティカード: {community_str or "なし"}
+            - ポット合計: {self.pot}
+            - 現在のラウンドでのあなたのベット額: {player.bet}
+            - 現在のコールに必要な合計ベット額: {self.current_bet}
+            - あなたの残りチップ: {player.chips}
+            - プレイヤーの状態: {json.dumps(player_states, indent=2, ensure_ascii=False)}
+
+            # あなたが実行可能なアクション
+            - `fold`: ゲームから降ります。
+            - `check`: 追加のベットをせずに行動を次のプレイヤーに回します。（あなたのベット額が現在のコール額 `{self.current_bet}` と同等かそれ以上の場合にのみ可能です）
+            - `call`: 現在のベット額までチップを追加で出します。コールに必要な額は `{amount_to_call}` です。
+            - `raise`: 現在のベット額をさらに引き上げます。この場合、`amount`にレイズ後の合計ベット額を指定してください。最低レイズ額は `{min_raise}` です。
+            - `all-in`: あなたの持っているチップをすべてベットします。
+
+            # 注意事項
+            - あなたの判断と論理的な思考プロセスを説明し、最終的なアクションをJSON形式で出力してください。
+            - JSONは必ず `action` と、レイズの場合は `amount` キーを含めてください。
+            - `amount`はレイズ後の合計ベット額です。追加する額ではありません。
+            - あなたの思考過程はJSONの外に記述してください。最終的な出力はJSONオブジェクトのみにしてください。
+
+            思考プロセス:
+            (ここに思考を記述)
+
+            最終アクション:
+            ```json
+            {{
+            "action": "...",
+            "amount": ...
+            }}
+            ```
+            """
+        try:
+            response = model.generate_content(prompt)
+            
+            json_part = None
+            if "```json" in response.text:
+                json_part = response.text.split("```json")[1].strip().replace("```", "")
+            else:
+                json_part = response.text[response.text.find('{'):response.text.rfind('}')+1]
+
+            if not json_part:
+                raise ValueError("No JSON found in response")
+
+            action_data = json.loads(json_part)
+            
+            action = action_data.get("action")
+            amount = action_data.get("amount", 0)
+
+            try:
+                thinking_process = response.text.split("```json")[0].replace('思考プロセス:', '').strip()
+                await self.interaction.channel.send(f"**{player.name} (Gemini) のアクション:**\n```\n思考プロセス:\n{thinking_process}\nアクション: {action}{' ' + str(amount) if action == 'raise' else ''}\n```")
+            except Exception:
+                 await self.interaction.channel.send(f"**{player.name} (Gemini) のアクション:** {action}{' ' + str(amount) if action == 'raise' else ''}")
+
+
+            can_check = amount_to_call <= 0
+
+            if action == 'fold':
+                await self.handle_action(player, 'fold')
+            elif action == 'check':
+                if not can_check:
+                    await self.handle_action(player, 'call') if player.chips >= amount_to_call else await self.handle_action(player, 'fold')
+                else:
+                    await self.handle_action(player, 'check')
+            elif action == 'call':
+                if can_check:
+                    await self.handle_action(player, 'check')
+                else:
+                    await self.handle_action(player, 'call')
+            elif action == 'raise':
+                if amount > player.chips + player.bet:
+                    amount = player.chips + player.bet
+                if amount < min_raise and player.chips + player.bet > min_raise:
+                    amount = min_raise
+                
+                if amount <= self.current_bet:
+                    await self.handle_action(player, 'call')
+                else:
+                    await self.handle_action(player, 'raise', amount)
+            elif action == 'all-in':
+                await self.handle_action(player, 'raise', player.chips + player.bet)
+            else:
+                await self.handle_action(player, 'fold')
+
+        except Exception as e:
+            print(f"Gemini action error: {e}")
+            await self.interaction.channel.send(f"{player.name} (Gemini) がエラーでフォールドしました。")
+            await self.handle_action(player, 'fold')
 
     async def end_betting_round(self):
         self.is_betting_round_active = False
@@ -468,7 +588,7 @@ class PokerGame:
 
     async def send_hands(self):
         for player in self.players:
-            if not player.is_cpu:
+            if not player.is_cpu and not player.is_gemini:
                 try:
                     hand_str = ' '.join(map(str, player.hand))
                     embed = discord.Embed(title=f"{self.interaction.guild.name}でのポーカー", description=f"あなたの手札: {hand_str}", color=discord.Color.blue())
@@ -491,7 +611,7 @@ class PokerGame:
             
             turn_indicator = "▶️" if i == self.current_player_index and self.game_in_progress and not self.players[i].is_folded else ""
             
-            player_info += f"{turn_indicator}**{player.name}**: {player.chips}チップ (ベット: {player.bet}){status}"
+            player_info += f"{turn_indicator}**{player.name}**: {player.chips}チップ (ベット: {player.bet}){status}\n"
         
         embed.add_field(name="プレイヤー", value=player_info, inline=False)
         return embed
@@ -500,7 +620,7 @@ class PokerGame:
         embed = self.create_embed()
         
         current_player = self.players[self.current_player_index]
-        if not current_player.is_cpu and self.game_in_progress:
+        if not current_player.is_cpu and not current_player.is_gemini and self.game_in_progress:
             self.action_view = PokerView(self)
             if self.game_message:
                 await self.game_message.edit(embed=embed, view=self.action_view)
@@ -644,23 +764,41 @@ class PokerSetupView(View):
 
 
 @client.tree.command(name='poker', description='テキサスホールデムポーカーを開始します。')
-@app_commands.describe(cpu_players="CPUプレイヤーの数（0-7）")
-async def poker(interaction: discord.Interaction, cpu_players: app_commands.Range[int, 0, 7] = 0):
+@app_commands.describe(
+    cpu_players="CPUプレイヤーの数（0-7）",
+    gemini_players="Gemini AIプレイヤーの数（0-7）"
+)
+async def poker(interaction: discord.Interaction, 
+              cpu_players: app_commands.Range[int, 0, 7] = 0,
+              gemini_players: app_commands.Range[int, 0, 7] = 0):
     if interaction.channel.id in poker_games:
         await interaction.response.send_message("このチャンネルではすでにゲームが進行中または募集中です。")
         return
 
-    game = PokerGame(interaction, cpu_players)
+    if cpu_players + gemini_players > 7:
+        await interaction.response.send_message("プレイヤーの合計はあなたを含めて8人までです。CPUとGeminiの合計を7人以下にしてください。")
+        return
+
+    game = PokerGame(interaction, cpu_players, gemini_players)
     poker_games[interaction.channel.id] = game
     
     game.add_player(interaction.user)
+    
+    # Add CPU players
     for i in range(cpu_players):
-        # Create a dummy user object for CPU
         cpu_id = random.randint(100000000, 999999999)
         cpu_user = discord.Object(id=cpu_id)
         cpu_user.name = f"CPU {i+1}"
         cpu_user.display_name = f"CPU {i+1}"
         game.add_player(cpu_user, is_cpu=True)
+
+    # Add Gemini players
+    for i in range(gemini_players):
+        gemini_id = random.randint(100000000, 999999999)
+        gemini_user = discord.Object(id=gemini_id)
+        gemini_user.name = f"Gemini {i+1}"
+        gemini_user.display_name = f"Gemini {i+1}"
+        game.add_player(gemini_user, is_cpu=False, is_gemini=True)
 
     view = PokerSetupView(interaction)
     embed = game.create_embed("ポーカーの参加者を募集中！参加ボタンで参加できます。")
