@@ -329,15 +329,10 @@ class PokerGame:
             - `all-in`: あなたの持っているチップをすべてベットします。
 
             # 注意事項
-            - あなたの判断と論理的な思考プロセスを説明し、最終的なアクションをJSON形式で出力してください。
             - JSONは必ず `action` と、レイズの場合は `amount` キーを含めてください。
             - `amount`はレイズ後の合計ベット額です。追加する額ではありません。
-            - あなたの思考過程はJSONの外に記述してください。最終的な出力はJSONオブジェクトのみにしてください。
+            - 最終的な出力はJSONオブジェクトのみにしてください。
 
-            思考プロセス:
-            (ここに思考を記述)
-
-            最終アクション:
             ```json
             {{
             "action": "...",
@@ -362,12 +357,7 @@ class PokerGame:
             action = action_data.get("action")
             amount = action_data.get("amount", 0)
 
-            try:
-                thinking_process = response.text.split("```json")[0].replace('思考プロセス:', '').strip()
-                await self.interaction.channel.send(f"**{player.name} (Gemini) のアクション:**\n```\n思考プロセス:\n{thinking_process}\nアクション: {action}{' ' + str(amount) if action == 'raise' else ''}\n```")
-            except Exception:
-                 await self.interaction.channel.send(f"**{player.name} (Gemini) のアクション:** {action}{' ' + str(amount) if action == 'raise' else ''}")
-
+            await self.interaction.channel.send(f"**{player.name} (Gemini) のアクション:** {action}{' ' + str(amount) if action == 'raise' else ''}")
 
             can_check = amount_to_call <= 0
 
